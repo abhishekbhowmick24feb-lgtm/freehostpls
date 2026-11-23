@@ -7,14 +7,16 @@ import json
 import logging
 import logging.handlers
 import math
+import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import discord
 from discord.ext import commands
 
-from core.config import DATA_DIR, DB_PATH, EXTENSIONS, LOG_DIR, TOKEN
+from core.config import BASE_DIR, DATA_DIR, DB_PATH, EXTENSIONS, LOG_DIR, TOKEN
 from core.database import Database
 from core.utils import error_embed
 
@@ -296,8 +298,26 @@ async def main() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     if not TOKEN:
+        # Never log the value, only where we looked and what we found.
+        raw = os.environ.get("DISCORD_TOKEN")
+        token_like = sorted(
+            key
+            for key in os.environ
+            if "TOKEN" in key.upper() or key.upper().startswith("DISCORD")
+        )
         log.error(
-            "DISCORD_TOKEN is missing. Copy .env.example to .env and paste your bot token."
+            "DISCORD_TOKEN is empty (cwd=%s, .env file present=%s, "
+            "DISCORD_TOKEN set=%s with %d characters, token-like env keys: %s)",
+            Path.cwd(),
+            (BASE_DIR / ".env").is_file(),
+            raw is not None,
+            len(raw or ""),
+            ", ".join(token_like) or "none",
+        )
+        log.error(
+            "Locally: copy .env.example to .env and paste your token. "
+            "On a host: add DISCORD_TOKEN to the service's environment variables "
+            "(no quotes, no spaces) and redeploy."
         )
         return
 
