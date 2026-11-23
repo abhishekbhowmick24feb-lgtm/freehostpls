@@ -106,9 +106,31 @@ web service:
 creates the service. You still paste the token in the dashboard when prompted;
 the value never enters git.
 
-Workers and persistent disks need a paid instance type. Without the disk the bot
-still runs, but `data/*.json` (settings, warnings, tickets, giveaways, temp-voice
-config) and `data/transcripts/` reset on every deploy.
+Workers and persistent disks need a paid instance type. Without a disk the bot
+still runs, but the container is rebuilt on every restart, so `data/` starts
+empty. That is why a free host forgets the log channel (no log entries arrive)
+and the temp-voice setup (no rooms are created) while every command still works.
+
+### Keeping settings on a free host
+
+`settings.json` is mirrored into a DM with the bot's owner: one message holding
+the file, replaced a few seconds after every save. On startup, when `data/` is
+empty, the bot downloads that copy before any cog loads, so log channel,
+prefixes, temp-voice setup, tickets, vouches, warnings and giveaways survive
+restarts and redeploys. Nothing to configure — the message appears in the
+owner's DMs, and deleting it only means the next save starts a fresh copy.
+
+Set `STATE_BACKUP=0` in the service's environment variables to turn it off.
+
+After deploying this, run these **once** so the copy is created:
+
+```
+!logs channel #bot-logs
+/tempvoice setup creator:#Create-VC category:#Voice
+```
+
+`data/media/`, `data/transcripts/` and `data/backups/` stay local to the
+container; re-upload banners or transcripts if the host has no disk.
 
 Never commit `.env` — the repository is public.
 

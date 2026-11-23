@@ -6,6 +6,7 @@ logs/
 data/*.json
 data/*.json.tmp
 data/*.corrupt.json
+data/*.pid
 data/transcripts/
 
 # uploaded media + zip archive

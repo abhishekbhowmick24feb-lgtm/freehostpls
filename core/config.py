@@ -16,6 +16,13 @@ DB_PATH = DATA_DIR / "settings.json"
 
 TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 DEFAULT_PREFIX = (os.getenv("DEFAULT_PREFIX", "!").strip() or "!")
+# Mirror data/settings.json into the owner's DMs so host restarts keep settings.
+STATE_BACKUP = os.getenv("STATE_BACKUP", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 # Load order for cogs. Used by the owner reload command as well.
 EXTENSIONS: tuple[str, ...] = (

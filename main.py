@@ -16,8 +16,17 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from core.config import BASE_DIR, DATA_DIR, DB_PATH, EXTENSIONS, LOG_DIR, TOKEN
+from core.config import (
+    BASE_DIR,
+    DATA_DIR,
+    DB_PATH,
+    EXTENSIONS,
+    LOG_DIR,
+    STATE_BACKUP,
+    TOKEN,
+)
 from core.database import Database
+from core.statebackup import StateBackup, has_local_state
 from core.utils import error_embed
 
 log = logging.getLogger("bot")
@@ -85,10 +94,17 @@ class MarketplaceBot(commands.Bot):
             status=discord.Status.online,
         )
         self.db = Database(DB_PATH)
+        self.state = StateBackup(self, DB_PATH)
         self.launch_time = datetime.now(timezone.utc)
         self._telemetry_task: asyncio.Task | None = None
 
     async def setup_hook(self) -> None:
+        # A free host wipes the filesystem on every restart, so pull the last
+        # saved settings back before any cog can read an empty database.
+        if STATE_BACKUP:
+            if not has_local_state(DB_PATH) and await self.state.restore():
+                log.info("Settings restored from the owner's DMs")
+            self.db.on_save = self.state.schedule
         await self.db.load()
         for extension in EXTENSIONS:
             await self.load_extension(extension)

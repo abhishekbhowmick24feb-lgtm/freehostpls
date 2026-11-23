@@ -8,7 +8,7 @@ import os
 import shutil
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core.config import DEFAULT_PREFIX
 
@@ -138,6 +138,8 @@ class Database:
         self.path = Path(path)
         self._data: dict[str, Any] = {"guilds": {}}
         self._lock = asyncio.Lock()
+        # Called after every write, so a backup can mirror the file off-disk.
+        self.on_save: Callable[[], None] | None = None
 
     async def load(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +165,12 @@ class Database:
                 json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
             )
             os.replace(tmp, self.path)
+        notify = self.on_save
+        if notify is not None:
+            try:
+                notify()
+            except Exception:  # a backup must never break a save
+                pass
 
     def guild(self, guild_id: int) -> dict[str, Any]:
         store = self._data.setdefault("guilds", {})
