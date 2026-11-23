@@ -73,6 +73,8 @@ DEFAULT_HONEYPOT: dict[str, Any] = {
 
 DEFAULTS: dict[str, Any] = {
     "prefix": None,
+    "log_enabled": True,
+    "log_channels": {},
     "log_channel_id": None,
     "mod_role_id": None,
     "raid_mode": False,

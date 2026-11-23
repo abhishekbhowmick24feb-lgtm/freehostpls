@@ -410,6 +410,9 @@ class Tickets(commands.Cog):
             channel = guild.get_channel(channel_id or 0)
             if isinstance(channel, discord.TextChannel):
                 return channel
+        logs = self.bot.get_cog("Logs")
+        if logs is not None:
+            return logs.channel_for(guild, "tickets")
         return None
 
     async def build_transcript(
