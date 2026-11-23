@@ -16,14 +16,24 @@ DB_PATH = DATA_DIR / "settings.json"
 
 TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 DEFAULT_PREFIX = (os.getenv("DEFAULT_PREFIX", "!").strip() or "!")
-# Mirror data/settings.json into the owner's DMs so host restarts keep settings.
-# Off by default: it DMs the owner. Set STATE_BACKUP=1 to turn it back on.
-STATE_BACKUP = os.getenv("STATE_BACKUP", "0").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
+# Mirror data/settings.json into a private staff channel so host restarts keep
+# settings. On by default; set STATE_BACKUP=0 to disable it.
+STATE_BACKUP = os.getenv("STATE_BACKUP", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
 }
+
+
+def _int_env(name: str) -> int | None:
+    raw = os.getenv(name, "").strip()
+    return int(raw) if raw.isdigit() else None
+
+
+# Optional: the ID of the backup channel. When unset the bot looks for a text
+# channel named "settings-backup".
+STATE_BACKUP_CHANNEL_ID = _int_env("STATE_BACKUP_CHANNEL_ID")
 
 # Load order for cogs. Used by the owner reload command as well.
 EXTENSIONS: tuple[str, ...] = (

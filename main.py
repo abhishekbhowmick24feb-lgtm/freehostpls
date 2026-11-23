@@ -103,7 +103,7 @@ class MarketplaceBot(commands.Bot):
         # saved settings back before any cog can read an empty database.
         if STATE_BACKUP:
             if not has_local_state(DB_PATH) and await self.state.restore():
-                log.info("Settings restored from the owner's DMs")
+                log.info("Settings restored from the backup channel")
             self.db.on_save = self.state.schedule
         await self.db.load()
         for extension in EXTENSIONS:

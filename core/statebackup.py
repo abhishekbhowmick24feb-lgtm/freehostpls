@@ -6,10 +6,13 @@ server configured — the log channel, temp-voice setup, prefixes, tickets,
 vouches, warnings — so after such a restart logs stop arriving and temporary
 rooms stop being created, even though the bot itself is online.
 
-This module mirrors the file into a direct message with the bot's owner: one
-message holding ``settings.json``, replaced shortly after every save, and
-downloaded again on startup when the local file is missing or empty. DMs need
-no extra permissions and cost nothing, so the state survives any host.
+This module mirrors the file into a private staff channel named
+``#settings-backup``: one message holding ``settings.json``, replaced shortly
+after every save and downloaded again on startup when the local file is
+missing or empty. Nothing is sent to anybody's DMs.
+
+The channel is found by name (case-insensitive) so no state has to survive the
+wipe; set ``STATE_BACKUP_CHANNEL_ID`` to pin a specific channel instead.
 """
 
 from __future__ import annotations
@@ -23,11 +26,20 @@ from pathlib import Path
 
 import discord
 
+from core.config import STATE_BACKUP_CHANNEL_ID
+
 log = logging.getLogger(__name__)
 
 FILENAME = "settings.json"
+CHANNEL_NAME = "settings-backup"
 DEBOUNCE_SECONDS = 8.0
-HEADER = "Marketplace Guard state backup — keep this message, the bot restores from it."
+HEADER = (
+    "**Marketplace Guard state backup — keep this channel private.**\n"
+    "The bot uploads `settings.json` here after every change and restores the "
+    "newest copy on startup, so the log channel, temp-voice setup and every "
+    "other setting survive a redeploy. Deleting this message deletes the saved "
+    "settings."
+)
 
 
 def _parse_state(raw: bytes) -> dict | None:
@@ -52,43 +64,134 @@ def has_local_state(path: Path) -> bool:
 
 
 class StateBackup:
-    """Mirror ``settings.json`` between the disk and the owner's DMs."""
+    """Mirror ``settings.json`` between the disk and a private staff channel."""
 
     def __init__(self, bot: discord.Client, path: Path) -> None:
         self.bot = bot
         self.path = Path(path)
-        self._channel: discord.DMChannel | None = None
-        self._message_id: int | None = None
+        self._channel: discord.TextChannel | None = None
         self._digest: str | None = None
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
     # --------------------------------------------------------------- helpers
 
-    async def _owner_dm(self) -> discord.DMChannel | None:
+    @staticmethod
+    def _is_backup_channel(channel: object) -> bool:
+        return (
+            isinstance(channel, discord.TextChannel)
+            and channel.name.strip().lower() == CHANNEL_NAME
+        )
+
+    async def _candidate_channels(self) -> list[discord.TextChannel]:
+        """Every text channel the bot can see, ready or not."""
+        found: list[discord.TextChannel] = []
+        seen: set[int] = set()
+
+        def collect(items) -> None:
+            for channel in items:
+                if isinstance(channel, discord.TextChannel) and channel.id not in seen:
+                    seen.add(channel.id)
+                    found.append(channel)
+
+        for guild in self.bot.guilds:
+            collect(guild.text_channels)
+        if found:
+            return found
+
+        # Called before the gateway is ready, so ask the REST API instead.
+        try:
+            async for guild in self.bot.fetch_guilds(limit=200):
+                try:
+                    collect(await guild.fetch_channels())
+                except discord.HTTPException as exc:
+                    log.debug(
+                        "State backup: cannot list channels of %s: %s", guild.id, exc
+                    )
+        except discord.HTTPException as exc:
+            log.warning("State backup: cannot list servers: %s", exc)
+        return found
+
+    async def _find_channel(self) -> discord.TextChannel | None:
+        """The backup channel, by ID when pinned and otherwise by name."""
         if self._channel is not None:
             return self._channel
+
+        if STATE_BACKUP_CHANNEL_ID:
+            channel = self.bot.get_channel(STATE_BACKUP_CHANNEL_ID)
+            if channel is None:
+                try:
+                    channel = await self.bot.fetch_channel(STATE_BACKUP_CHANNEL_ID)
+                except discord.HTTPException as exc:
+                    log.warning(
+                        "State backup: cannot open channel %s: %s",
+                        STATE_BACKUP_CHANNEL_ID,
+                        exc,
+                    )
+                    channel = None
+            if isinstance(channel, discord.TextChannel):
+                self._channel = channel
+                return channel
+            log.warning(
+                "State backup: STATE_BACKUP_CHANNEL_ID=%s is not a text channel",
+                STATE_BACKUP_CHANNEL_ID,
+            )
+
+        for channel in await self._candidate_channels():
+            if self._is_backup_channel(channel):
+                self._channel = channel
+                return channel
+
+        log.warning(
+            "State backup: no #%s channel found — create a private channel with "
+            "that exact name (View Channel, Send Messages, Attach Files, Read "
+            "Message History for the bot) and restart to start saving settings.",
+            CHANNEL_NAME,
+        )
+        return None
+
+    @staticmethod
+    def _is_public(channel: discord.TextChannel) -> bool:
+        """True when @everyone can read the channel, i.e. it is not private."""
+        guild = getattr(channel, "guild", None)
+        default_role = getattr(guild, "default_role", None)
+        if default_role is None:
+            return False
         try:
-            info = await self.bot.application_info()
-            owner = info.owner
-            if owner is None:
-                return None
-            self._channel = owner.dm_channel or await owner.create_dm()
-        except (discord.HTTPException, AttributeError) as exc:
-            log.warning("State backup: cannot reach the owner's DMs: %s", exc)
-            return None
-        return self._channel
+            return bool(channel.permissions_for(default_role).read_messages)
+        except Exception:  # permission maths must never break a backup
+            return False
+
+    async def _delete_old_copies(
+        self, channel: discord.TextChannel, keep_id: int
+    ) -> None:
+        """Leave one backup message behind, even across restarts."""
+        me = self.bot.user.id if self.bot.user else 0
+        try:
+            async for message in channel.history(limit=50):
+                if message.id == keep_id or message.author.id != me:
+                    continue
+                if not any(
+                    item.filename == FILENAME for item in message.attachments
+                ):
+                    continue
+                try:
+                    await message.delete()
+                except discord.HTTPException:
+                    pass
+        except discord.HTTPException as exc:
+            log.debug("State backup: could not tidy old copies: %s", exc)
 
     # ------------------------------------------------------------- restoring
 
     async def restore(self) -> bool:
-        """Replace the empty local file with the newest copy from the DMs."""
-        channel = await self._owner_dm()
+        """Replace the empty local file with the newest copy from the channel."""
+        channel = await self._find_channel()
         if channel is None:
             return False
         me = self.bot.user.id if self.bot.user else 0
         try:
-            async for message in channel.history(limit=25):
+            async for message in channel.history(limit=50):
                 if message.author.id != me or not message.attachments:
                     continue
                 for attachment in message.attachments:
@@ -104,21 +207,21 @@ class StateBackup:
                         continue
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     self.path.write_bytes(raw)
-                    self._message_id = message.id
                     self._digest = hashlib.sha256(raw).hexdigest()
                     log.info(
-                        "Restored state from the owner DM (%d guild(s))",
+                        "Restored state from #%s (%d server(s))",
+                        channel.name,
                         len(data["guilds"]),
                     )
                     return True
         except discord.HTTPException as exc:
-            log.warning("State backup: could not read the owner DM: %s", exc)
+            log.warning("State backup: could not read #%s: %s", channel.name, exc)
         return False
 
     # --------------------------------------------------------------- pushing
 
     async def push(self) -> None:
-        """Send the current file to the DMs unless it is already up to date."""
+        """Upload the current file unless the channel already holds it."""
         async with self._lock:
             try:
                 raw = self.path.read_bytes()
@@ -129,19 +232,15 @@ class StateBackup:
             digest = hashlib.sha256(raw).hexdigest()
             if digest == self._digest:
                 return
-            channel = await self._owner_dm()
+            channel = await self._find_channel()
             if channel is None:
                 return
-
-            if self._message_id is not None:
-                try:
-                    old = await channel.fetch_message(self._message_id)
-                    await old.delete()
-                except discord.NotFound:
-                    pass
-                except discord.HTTPException as exc:
-                    log.debug("State backup: could not delete the old copy: %s", exc)
-                self._message_id = None
+            if self._is_public(channel):
+                log.warning(
+                    "State backup: #%s is readable by @everyone — remove that "
+                    "permission so only staff can see the saved settings.",
+                    channel.name,
+                )
 
             try:
                 sent = await channel.send(
@@ -151,9 +250,10 @@ class StateBackup:
             except discord.HTTPException as exc:
                 log.warning("State backup: could not upload the state: %s", exc)
                 return
-            self._message_id = sent.id
             self._digest = digest
-            log.info("State backed up to the owner DM (%d bytes)", len(raw))
+            log.info("State backed up to #%s (%d bytes)", channel.name, len(raw))
+            # Old copies can exist after a restart; keep only the newest.
+            await self._delete_old_copies(channel, sent.id)
 
     def schedule(self) -> None:
         """Ask for a push soon; coalesces bursts of saves into one upload."""

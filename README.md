@@ -111,19 +111,26 @@ still runs, but the container is rebuilt on every restart, so `data/` starts
 empty. That is why a free host forgets the log channel (no log entries arrive)
 and the temp-voice setup (no rooms are created) while every command still works.
 
-### Keeping settings on a free host (optional, off by default)
+### Keeping settings on a free host
 
-The bot can mirror `settings.json` into a DM with its owner: one message holding
-the file, replaced a few seconds after every save. On startup, when `data/` is
-empty, the bot downloads that copy before any cog loads, so log channel,
-prefixes, temp-voice setup, tickets, vouches, warnings and giveaways survive
-restarts and redeploys.
+The bot mirrors `settings.json` into a **private staff channel** instead of a
+DM: one message holding the file, replaced a few seconds after every save. On
+startup, when `data/` is empty, the bot downloads that copy before any cog
+loads, so log channel, prefixes, temp-voice setup, tickets, vouches, warnings
+and giveaways survive restarts and redeploys. Nobody gets a DM.
 
-**It is disabled by default** because it shows up in the owner's DMs. To turn
-it on, add `STATE_BACKUP=1` to the service's environment variables (or `.env`)
-and restart. Set `STATE_BACKUP=0` (or delete the variable) to turn it off again;
-no DM is sent while it is off, and the one already in your DMs can simply be
-deleted.
+**Create one channel named exactly `settings-backup`** (text channel) and make
+it private: deny **View Channel** to `@everyone`, then allow it for the staff
+role, the moderator role, and the bot (the bot needs **View Channel**, **Send
+Messages**, **Attach Files** and **Read Message History**). It is found by
+name, so the setup keeps working after every redeploy.
+
+Prefer a different name? Set `STATE_BACKUP_CHANNEL_ID` to the channel's ID (or
+`STATE_BACKUP=0` to switch the feature off) in the service's environment
+variables and restart.
+
+If no such channel exists the bot still runs normally and only logs a warning,
+so create the channel whenever it suits you and restart.
 
 After deploying this, run these **once** so the copy is created:
 
