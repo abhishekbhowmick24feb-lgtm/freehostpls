@@ -89,6 +89,29 @@ python main.py
 
 Logs are printed to the console and saved in `logs/bot.log`.
 
+### Hosting (Render)
+
+A Discord bot opens no HTTP port, so host it as a **Background Worker**, not a
+web service:
+
+| Setting | Value |
+| --- | --- |
+| Runtime | Python |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `python main.py` |
+| Environment variable | `DISCORD_TOKEN` = your bot token |
+| Persistent disk | mount at `/opt/render/project/src/data`, 1 GB |
+
+`render.yaml` in this folder describes exactly that, so **New → Blueprint**
+creates the service. You still paste the token in the dashboard when prompted;
+the value never enters git.
+
+Workers and persistent disks need a paid instance type. Without the disk the bot
+still runs, but `data/*.json` (settings, warnings, tickets, giveaways, temp-voice
+config) and `data/transcripts/` reset on every deploy.
+
+Never commit `.env` — the repository is public.
+
 ### Bot Control panel (Windows)
 
 ```powershell

@@ -1,0 +1,26 @@
+# Render Blueprint for Marketplace Guard.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# A Discord bot rejects incoming HTTP, so it runs as a background worker,
+# not a web service. The persistent disk keeps data/ alive across deploys.
+services:
+  - type: worker
+    name: marketplace-guard
+    runtime: python
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    autoDeployTrigger: commit
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false # prompted in the dashboard, never stored in git
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: DEFAULT_PREFIX
+        value: "!"
+    disk:
+      name: bot-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
