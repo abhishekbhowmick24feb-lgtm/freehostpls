@@ -42,6 +42,18 @@ CATEGORIES: dict[str, dict[str, object]] = {
         "channel": "ticket-logs",
         "names": ("ticket-logs", "tickets-logs", "ticket-log", "ticket-transcript-logs"),
     },
+    "members": {
+        "label": "Members",
+        "channel": "member-logs",
+        "names": (
+            "member-logs",
+            "members-logs",
+            "member-log",
+            "join-logs",
+            "join-leave-logs",
+            "member-join-leave",
+        ),
+    },
     "security": {
         "label": "Security",
         "channel": "security-logs",
@@ -63,6 +75,12 @@ CATEGORY_ALIASES: dict[str, str] = {
     "chat": "messages",
     "ticket": "tickets",
     "tickets": "tickets",
+    "member": "members",
+    "members": "members",
+    "join": "members",
+    "joins": "members",
+    "leave": "members",
+    "leaves": "members",
     "security": "security",
     "raid": "security",
     "alerts": "security",
@@ -72,6 +90,7 @@ CATEGORY_ALIASES: dict[str, str] = {
 # in an entry's title owns that entry. Anything unmatched is "general".
 TITLE_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("message deleted", "message edited", "bulk message delete"), "messages"),
+    (("member joined", "member left", "member join", "member leave"), "members"),
     (("ticket",), "tickets"),
     (("raid", "nuke", "scam", "honeypot", "security", "account too young"), "security"),
     (
@@ -387,6 +406,60 @@ class Logs(commands.Cog):
             ),
             color=0xFEE75C,
             category="messages",
+        )
+
+    # -------------------------------------------------------- member events
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        """Record joins, flagging brand-new accounts."""
+        guild = member.guild
+        age = discord.utils.utcnow() - member.created_at
+        fields = [
+            (
+                "Account created",
+                f"{discord.utils.format_dt(member.created_at, 'R')} ({age.days}d old)",
+                True,
+            ),
+            ("Members now", str(guild.member_count or "—"), True),
+        ]
+        if age.days < 7:
+            fields.append(("Heads up", "🆕 Account is less than a week old", False))
+
+        await self.audit(
+            guild,
+            title="📥 Member joined",
+            description=f"{member.mention} (`{member.id}`)\n**Username:** {member}",
+            color=SUCCESS_COLOR,
+            fields=fields,
+            category="members",
+        )
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        """Record leaves (kicks and bans also surface here; moderation logs hold the reason)."""
+        guild = member.guild
+        joined = (
+            discord.utils.format_dt(member.joined_at, "R") if member.joined_at else "unknown"
+        )
+        roles = [role.mention for role in member.roles if not role.is_default()][:10]
+        fields = [
+            ("Joined", joined, True),
+            ("Members now", str(guild.member_count or "—"), True),
+        ]
+        if roles:
+            value = ", ".join(roles)
+            if len(member.roles) - 1 > len(roles):
+                value += f" *(+{len(member.roles) - 1 - len(roles)} more)*"
+            fields.append(("Roles", truncate(value, 1024), False))
+
+        await self.audit(
+            guild,
+            title="📤 Member left",
+            description=f"{member.mention} (`{member.id}`)\n**Username:** {member}",
+            color=0x95A5A6,
+            fields=fields,
+            category="members",
         )
 
     # ---------------------------------------------------------------- group
