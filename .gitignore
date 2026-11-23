@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+logs/
+data/*.json
+data/*.json.tmp
+data/*.corrupt.json
+data/transcripts/
+
+# uploaded media + zip archive
+data/media/
+discord-bot.zip

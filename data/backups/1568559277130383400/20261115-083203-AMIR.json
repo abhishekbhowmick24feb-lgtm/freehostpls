@@ -1,0 +1,433 @@
+{
+  "version": 1,
+  "guild_id": 1568559277130383400,
+  "guild_name": "Uber-Eats Amir?",
+  "created_at": "2026-11-15T08:32:03+00:00",
+  "roles": [
+    {
+      "id": 1568559277130383400,
+      "name": "@everyone",
+      "color": 0,
+      "hoist": false,
+      "mentionable": false,
+      "permissions": 140737488355329,
+      "position": 0,
+      "managed": false,
+      "is_default": true
+    },
+    {
+      "id": 1571113505019662366,
+      "name": "AMIR",
+      "color": 0,
+      "hoist": false,
+      "mentionable": false,
+      "permissions": 8,
+      "position": 1,
+      "managed": true,
+      "is_default": false
+    },
+    {
+      "id": 1571121213974249583,
+      "name": "Visitor",
+      "color": 3438673,
+      "hoist": false,
+      "mentionable": false,
+      "permissions": 392390396661313,
+      "position": 2,
+      "managed": false,
+      "is_default": false
+    },
+    {
+      "id": 1571426019137687693,
+      "name": "Buyer",
+      "color": 10038562,
+      "hoist": true,
+      "mentionable": false,
+      "permissions": 0,
+      "position": 3,
+      "managed": false,
+      "is_default": false
+    },
+    {
+      "id": 1571176686379212870,
+      "name": "Cuck",
+      "color": 5533306,
+      "hoist": false,
+      "mentionable": false,
+      "permissions": 0,
+      "position": 4,
+      "managed": false,
+      "is_default": false
+    },
+    {
+      "id": 1571034860532015134,
+      "name": "ᴅᴀ ʀᴇᴀʟ ᴀᴍɪʀ",
+      "color": 14051982,
+      "hoist": true,
+      "mentionable": false,
+      "permissions": 8864262743130111,
+      "position": 5,
+      "managed": false,
+      "is_default": false
+    },
+    {
+      "id": 1571183781547610134,
+      "name": "Not-Owner",
+      "color": 854795,
+      "hoist": true,
+      "mentionable": false,
+      "permissions": 8,
+      "position": 6,
+      "managed": false,
+      "is_default": false
+    }
+  ],
+  "channels": [
+    {
+      "id": 1568559277923369032,
+      "name": "Yapping ?😵‍💫",
+      "type": "category",
+      "position": 1,
+      "category_id": null,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 2048,
+          "deny": 0
+        },
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 70506183509056,
+          "deny": 2048
+        }
+      ]
+    },
+    {
+      "id": 1568559277923369033,
+      "name": "Yapping ?",
+      "type": "category",
+      "position": 2,
+      "category_id": null,
+      "overwrites": []
+    },
+    {
+      "id": 1568559277923369034,
+      "name": "general",
+      "type": "text",
+      "position": 7,
+      "category_id": 1568559277923369032,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 0,
+          "deny": 0
+        },
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 70781061418048,
+          "deny": 0
+        },
+        {
+          "id": 1571176686379212870,
+          "type": "role",
+          "allow": 0,
+          "deny": 0
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1568559277923369035,
+      "name": "General",
+      "type": "voice",
+      "position": 0,
+      "category_id": 1568559277923369033,
+      "overwrites": [],
+      "bitrate": 64000,
+      "user_limit": 0,
+      "nsfw": false
+    },
+    {
+      "id": 1568559573814743091,
+      "name": "rules",
+      "type": "text",
+      "position": 0,
+      "category_id": null,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 0,
+          "deny": 2048
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571033832071766046,
+      "name": "ᴠᴇʀɪꜰʏ🥬",
+      "type": "text",
+      "position": 2,
+      "category_id": null,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 66560,
+          "deny": 0
+        },
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 0,
+          "deny": 3072
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571037951029420112,
+      "name": "ʜᴏɴᴇʏᴘᴏᴛ🍯",
+      "type": "text",
+      "position": 1,
+      "category_id": null,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 66560,
+          "deny": 0
+        },
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 101376,
+          "deny": 0
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571123976879734824,
+      "name": "MAIN👺",
+      "type": "category",
+      "position": 0,
+      "category_id": null,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 66560,
+          "deny": 2048
+        }
+      ]
+    },
+    {
+      "id": 1571124057674358914,
+      "name": "announcement🗣️",
+      "type": "text",
+      "position": 4,
+      "category_id": 1571123976879734824,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 66560,
+          "deny": 2048
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571125382541742170,
+      "name": "moderation",
+      "type": "category",
+      "position": 3,
+      "category_id": null,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 0,
+          "deny": 1024
+        }
+      ]
+    },
+    {
+      "id": 1571125418516283504,
+      "name": "logs",
+      "type": "text",
+      "position": 8,
+      "category_id": 1571125382541742170,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 0,
+          "deny": 1024
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571127418553638992,
+      "name": "ticket-logs",
+      "type": "text",
+      "position": 9,
+      "category_id": 1571125382541742170,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 0,
+          "deny": 1024
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571127727040368720,
+      "name": "tickets-🎟️💸",
+      "type": "text",
+      "position": 6,
+      "category_id": 1571123976879734824,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 66560,
+          "deny": 2048
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571128918759448678,
+      "name": "shop-items🛒",
+      "type": "text",
+      "position": 5,
+      "category_id": 1571123976879734824,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 66560,
+          "deny": 2048
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571397473149132861,
+      "name": "bot-tesing",
+      "type": "text",
+      "position": 10,
+      "category_id": 1571125382541742170,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 0,
+          "deny": 1024
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571408010146750585,
+      "name": "bot-status🌐",
+      "type": "text",
+      "position": 3,
+      "category_id": 1571123976879734824,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 66560,
+          "deny": 2048
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571419855624740864,
+      "name": "vouch-⭐",
+      "type": "text",
+      "position": 11,
+      "category_id": 1571123976879734824,
+      "overwrites": [
+        {
+          "id": 1571121213974249583,
+          "type": "role",
+          "allow": 66560,
+          "deny": 2048
+        },
+        {
+          "id": 1571426019137687693,
+          "type": "role",
+          "allow": 2112,
+          "deny": 0
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    },
+    {
+      "id": 1571442032612745268,
+      "name": "anti-nuke-status",
+      "type": "text",
+      "position": 12,
+      "category_id": 1571125382541742170,
+      "overwrites": [
+        {
+          "id": 1568559277130383400,
+          "type": "role",
+          "allow": 0,
+          "deny": 1024
+        },
+        {
+          "id": 1571037905449910292,
+          "type": "member",
+          "allow": 1024,
+          "deny": 0
+        },
+        {
+          "id": 1571102231284154529,
+          "type": "member",
+          "allow": 1024,
+          "deny": 0
+        }
+      ],
+      "topic": "",
+      "nsfw": false,
+      "slowmode_delay": 0
+    }
+  ]
+}
