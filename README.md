@@ -680,9 +680,10 @@ saves it. Honeypot victims get that same invite in their removal DM instead of a
 new one-use invite being created for every softban. If no invite is saved, the
 bot falls back to creating a one-use invite per softban.
 
-Anyone who sends a message in the armed channel has it deleted and is
-**softbanned** — banned and instantly unbanned — and the panel's **Kicks**
-counter goes up. Before the ban is applied, the member is DM'd what happened,
+The panel is re-posted automatically on startup if it was deleted, so it
+survives a redeploy. Anyone who sends a message in the armed channel has it
+deleted and is **softbanned** — banned and instantly unbanned — and the panel's
+**Kicks** counter goes up. Before the ban is applied, the member is DM'd what happened,
 how to secure their account, Discord's hacked-account guide, and the saved
 rejoin invite. Server owner, administrators, members with **Manage Messages**,
 whitelisted roles/members and the configured moderator role are never punished. The bot needs **Manage

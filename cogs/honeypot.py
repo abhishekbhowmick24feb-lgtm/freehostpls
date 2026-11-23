@@ -19,10 +19,13 @@ from core.utils import (
 log = logging.getLogger(__name__)
 
 PANEL_COLOR = 0x2B2D31
-PANEL_TITLE = "DO NOT SEND MESSAGES IN THIS CHANNEL"
+PANEL_TITLE = "Do not send messages in this channel"
 PANEL_DESCRIPTION = (
-    "This channel is used to catch compromised accounts and for those whole fell for those shitty scam links. "
-    "Any messages sent here will result in a **softban**."
+    "This channel is a trap for compromised accounts and for anyone who clicks "
+    "scam links.\n\n"
+    "Anything sent here is deleted and the sender is removed with a **softban** "
+    "(banned and immediately unbanned).\n\n"
+    "Staff are exempt. If you were removed by mistake, ask a staff member for an invite."
 )
 SOFTBAN_REASON = "Honeypot: sent a message in a no-talk channel"
 
@@ -58,7 +61,7 @@ def removal_embed(
 ) -> discord.Embed:
     """The DM a honeypot victim receives, with safety steps and a way back in."""
     embed = discord.Embed(
-        title=f"You were removed from {guild.name} 😭😭",
+        title=f"You were removed from {guild.name}",
         description=(
             f"Your account posted in **#{channel_name}**, a channel nobody is meant "
             "to use. That usually means someone else has got into your account."
@@ -477,6 +480,38 @@ class Honeypot(commands.Cog):
 
     # -------------------------------------------------------------- catching
 
+    async def _ensure_panel(self, guild: discord.Guild) -> None:
+        """Keep the panel alive across restarts and redeploys."""
+        config = self._config(guild)
+        channel = guild.get_channel(config.get("channel_id") or 0)
+        if not isinstance(channel, discord.TextChannel):
+            return
+        if config.get("message_id") and await self._refresh_panel(guild):
+            return
+        try:
+            message = await channel.send(
+                embed=panel_embed(guild, config["count"]),
+                view=panel_view(config["count"]),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            log.info(
+                "Honeypot could not re-post its panel in guild %s: %s", guild.id, exc
+            )
+            return
+        config["message_id"] = message.id
+        await self.bot.db.save()
+        log.info("Honeypot panel restored in guild %s", guild.id)
+
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        """Re-post the panel if it was deleted or its saved id went stale."""
+        for guild in self.bot.guilds:
+            try:
+                await self._ensure_panel(guild)
+            except Exception:
+                log.exception("Honeypot panel restore failed in guild %s", guild.id)
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         if message.guild is None or message.author.bot:
@@ -502,6 +537,11 @@ class Honeypot(commands.Cog):
             and me.guild_permissions.ban_members
             and me.top_role > member.top_role
         )
+        # delete_message_seconds needs Manage Messages; without it Discord
+        # rejects the whole ban, so only ask for message cleanup when allowed.
+        ban_kwargs: dict = {"reason": SOFTBAN_REASON}
+        if me is not None and me.guild_permissions.manage_messages:
+            ban_kwargs["delete_message_seconds"] = 86400
 
         punished = False
         dm_sent = False
@@ -512,9 +552,7 @@ class Honeypot(commands.Cog):
                 member, message.guild, message.channel.name
             )
             try:
-                await message.guild.ban(
-                    member, reason=SOFTBAN_REASON, delete_message_seconds=86400
-                )
+                await message.guild.ban(member, **ban_kwargs)
                 try:
                     await message.guild.unban(
                         member, reason=f"Softban reversed (honeypot) — {member.id}"
