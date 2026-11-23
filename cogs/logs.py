@@ -64,6 +64,111 @@ class Logs(commands.Cog):
             log.warning("Could not send log entry: %s", exc)
             return False
 
+    # ------------------------------------------------------- message events
+
+    @staticmethod
+    def _content_block(text: str, limit: int = 900) -> str:
+        """Quote a message body so it reads safely inside an embed."""
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return "*No text — embed, sticker or attachment only, or the message was too old to be cached.*"
+        lines = cleaned.splitlines()[:12]
+        return truncate("\n".join(f"> {line}" for line in lines), limit)
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message) -> None:
+        """Record who deleted what, including the message text."""
+        guild = message.guild
+        if guild is None or message.author.bot:
+            return
+        channel = self.channel_for(guild)
+        if channel is None or channel.id == message.channel.id:
+            return
+
+        author = message.author
+        description = (
+            f"**Author:** {author.mention} (`{author.id}`)\n"
+            f"**Channel:** {message.channel.mention}\n"
+            f"**Sent:** {discord.utils.format_dt(message.created_at, 'R')}\n\n"
+            f"**Message:**\n{self._content_block(message.content)}"
+        )
+        fields: list[tuple[str, str, bool]] = [
+            ("Message ID", f"`{message.id}`", True)
+        ]
+        if message.attachments:
+            files = ", ".join(
+                f"[{truncate(item.filename, 60)}]({item.url})"
+                for item in message.attachments[:5]
+            )
+            fields.append(("Attachments", files, False))
+
+        await self.audit(
+            guild,
+            title="🗑️ Message deleted",
+            description=description,
+            color=0xED4245,
+            fields=fields,
+        )
+
+    @commands.Cog.listener()
+    async def on_bulk_message_delete(
+        self, messages: list[discord.Message]
+    ) -> None:
+        """Record a purge, with a preview of what was removed."""
+        if not messages:
+            return
+        first = messages[0]
+        guild = first.guild
+        if guild is None:
+            return
+        channel = self.channel_for(guild)
+        if channel is None or channel.id == first.channel.id:
+            return
+
+        preview = "\n".join(
+            f"**{truncate(str(item.author), 60)}:** "
+            f"{truncate(item.content or '*no text*', 120)}"
+            for item in messages[:10]
+        )
+        if len(messages) > 10:
+            preview += f"\n*…and {len(messages) - 10} more*"
+
+        await self.audit(
+            guild,
+            title="🧹 Bulk message delete",
+            description=(
+                f"**Channel:** {first.channel.mention}\n"
+                f"**Messages:** {len(messages)}\n\n{preview}"
+            ),
+            color=0xED4245,
+        )
+
+    @commands.Cog.listener()
+    async def on_message_edit(
+        self, before: discord.Message, after: discord.Message
+    ) -> None:
+        """Record edits so moderators can see what a message used to say."""
+        if before.guild is None or before.author.bot:
+            return
+        if before.content == after.content:
+            return
+        channel = self.channel_for(before.guild)
+        if channel is None or channel.id == after.channel.id:
+            return
+
+        await self.audit(
+            before.guild,
+            title="✏️ Message edited",
+            description=(
+                f"**Author:** {after.author.mention} (`{after.author.id}`)\n"
+                f"**Channel:** {after.channel.mention}\n"
+                f"**Jump:** {after.jump_url}\n\n"
+                f"**Before:**\n{self._content_block(before.content)}\n\n"
+                f"**After:**\n{self._content_block(after.content)}"
+            ),
+            color=0xFEE75C,
+        )
+
     # ---------------------------------------------------------------- group
 
     @commands.hybrid_group(

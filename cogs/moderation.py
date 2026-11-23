@@ -6,7 +6,7 @@ import datetime as dt
 import logging
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from core.utils import (
     ConfirmView,
@@ -23,6 +23,19 @@ from core.utils import (
 log = logging.getLogger(__name__)
 
 MAX_TIMEOUT = 28 * 86400
+DEFAULT_MUTE_SECONDS = 3600
+MUTE_ROLE_NAME = "Muted"
+
+
+def _aware(value: str | None) -> dt.datetime | None:
+    """Read a stored ISO timestamp as a timezone-aware datetime."""
+    if not value:
+        return None
+    try:
+        moment = dt.datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=dt.timezone.utc)
 
 
 class ModeratorOnly(commands.CheckFailure):
@@ -65,6 +78,10 @@ class Moderation(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self._expire_mutes.start()
+
+    def cog_unload(self) -> None:
+        self._expire_mutes.cancel()
 
     # --------------------------------------------------------------- helpers
 
@@ -271,7 +288,7 @@ class Moderation(commands.Cog):
 
     # -------------------------------------------------------------- timeout
 
-    @commands.hybrid_command(name="timeout", aliases=["mute"], usage="<member> <duration> [reason]")
+    @commands.hybrid_command(name="timeout", usage="<member> <duration> [reason]")
     @commands.guild_only()
     @is_moderator("moderate_members")
     @commands.bot_has_permissions(moderate_members=True)
@@ -325,7 +342,7 @@ class Moderation(commands.Cog):
             mention_author=False,
         )
 
-    @commands.hybrid_command(name="untimeout", aliases=["unmute"], usage="<member> [reason]")
+    @commands.hybrid_command(name="untimeout", usage="<member> [reason]")
     @commands.guild_only()
     @is_moderator("moderate_members")
     @commands.bot_has_permissions(moderate_members=True)
@@ -354,6 +371,372 @@ class Moderation(commands.Cog):
             embed=success_embed(f"**{member}** can talk again.", title="🔊 Timeout removed"),
             mention_author=False,
         )
+
+    # ----------------------------------------------------------------- mute
+
+    async def _ensure_mute_role(
+        self, guild: discord.Guild, role: discord.Role | None = None
+    ) -> tuple[discord.Role | None, str | None]:
+        """Return a usable mute role, creating one when the server has none."""
+        data = self.bot.db.guild(guild.id)
+        if role is None:
+            role_id = data.get("mute_role_id")
+            role = guild.get_role(role_id) if role_id else None
+
+        if role is None:
+            if guild.me is None or not guild.me.guild_permissions.manage_roles:
+                return None, "I need the **Manage Roles** permission to mute members."
+            role = discord.utils.get(guild.roles, name=MUTE_ROLE_NAME)
+            if role is None:
+                try:
+                    role = await guild.create_role(
+                        name=MUTE_ROLE_NAME,
+                        permissions=discord.Permissions.none(),
+                        colour=discord.Colour.dark_gray(),
+                        hoist=False,
+                        mentionable=False,
+                        reason="Mute role for moderation",
+                    )
+                except discord.HTTPException as exc:
+                    return None, f"I could not create the mute role: {exc}"
+
+        if guild.me is None or role >= guild.me.top_role:
+            return None, (
+                f"The mute role **{role.name}** is not below my highest role. "
+                "Move my role above it and try again."
+            )
+
+        data["mute_role_id"] = role.id
+        await self.bot.db.save()
+        return role, None
+
+    @staticmethod
+    def _role_has_overwrites(guild: discord.Guild, role: discord.Role) -> bool:
+        """True when the role is already blocked somewhere in this server."""
+        for channel in guild.channels:
+            overwrites = getattr(channel, "overwrites", None)
+            if isinstance(overwrites, dict) and role in overwrites:
+                return True
+        return False
+
+    async def _apply_mute_overwrites(
+        self, guild: discord.Guild, role: discord.Role
+    ) -> int:
+        """Stop the role from talking or sending in every channel."""
+        updated = 0
+        for channel in guild.channels:
+            if not isinstance(
+                channel,
+                (
+                    discord.TextChannel,
+                    discord.VoiceChannel,
+                    discord.StageChannel,
+                    discord.ForumChannel,
+                ),
+            ):
+                continue
+            try:
+                await channel.set_permissions(
+                    role,
+                    send_messages=False,
+                    send_messages_in_threads=False,
+                    add_reactions=False,
+                    speak=False,
+                    create_public_threads=False,
+                    create_private_threads=False,
+                    reason="Mute role permissions",
+                )
+                updated += 1
+            except discord.HTTPException:
+                continue
+        return updated
+
+    @commands.hybrid_command(
+        name="mute", usage="<member> [duration] [reason]"
+    )
+    @commands.guild_only()
+    @is_moderator("moderate_members")
+    @commands.bot_has_permissions(manage_roles=True)
+    @discord.app_commands.describe(
+        member="Member to mute",
+        duration="How long: 10m, 1h, 2d … (default 1h)",
+        reason="Why they are muted",
+    )
+    async def mute(
+        self,
+        ctx: commands.Context,
+        member: discord.Member,
+        duration: str = "",
+        *,
+        reason: str = "",
+    ) -> None:
+        """Mute a member with the Muted role so they cannot send messages or talk."""
+        problem = hierarchy_problem(ctx, member)
+        if problem:
+            await ctx.reply(embed=error_embed(problem), mention_author=False)
+            return
+
+        seconds = parse_duration(duration, default_unit="m") if duration else None
+        if seconds is None:
+            # The second argument was not a duration, so treat it as the reason.
+            reason = " ".join(part for part in (duration, reason) if part.strip())
+            seconds = DEFAULT_MUTE_SECONDS
+        reason = reason.strip() or "No reason provided"
+
+        role, problem_text = await self._ensure_mute_role(ctx.guild)
+        if role is None:
+            await ctx.reply(
+                embed=error_embed(problem_text or "No mute role available."),
+                mention_author=False,
+            )
+            return
+        if not self._role_has_overwrites(ctx.guild, role):
+            # First use: block the role in every channel without a manual setup.
+            await self._apply_mute_overwrites(ctx.guild, role)
+
+        until = discord.utils.utcnow() + dt.timedelta(seconds=seconds)
+        data = self.bot.db.guild(ctx.guild.id)
+        data["mutes"][str(member.id)] = {
+            "until": until.isoformat(timespec="seconds"),
+            "reason": reason,
+            "moderator_id": ctx.author.id,
+            "moderator": str(ctx.author),
+            "at": discord.utils.utcnow().isoformat(timespec="seconds"),
+        }
+        await self.bot.db.save()
+
+        try:
+            if role not in member.roles:
+                await member.add_roles(
+                    role, reason=self._reason(ctx, f"mute {fmt_duration(seconds)}")
+                )
+        except discord.Forbidden:
+            data["mutes"].pop(str(member.id), None)
+            await self.bot.db.save()
+            await ctx.reply(
+                embed=error_embed(
+                    "Discord blocked me from adding the mute role — check my role "
+                    "position and the Manage Roles permission."
+                ),
+                mention_author=False,
+            )
+            return
+
+        await self._notify(
+            member,
+            ctx.guild,
+            "muted",
+            reason,
+            extra=(
+                f"**Duration:** {fmt_duration(seconds)}\n"
+                f"**Ends:** {discord.utils.format_dt(until, 'R')}"
+            ),
+        )
+        await self._audit(
+            ctx,
+            "🔇 Member muted",
+            f"{member} (`{member.id}`) for {fmt_duration(seconds)}",
+            reason,
+            color=0xFEE75C,
+        )
+        await ctx.reply(
+            embed=success_embed(
+                f"**{member}** is muted for **{fmt_duration(seconds)}** and cannot "
+                f"send messages or talk.\n"
+                f"**Reason:** {reason}\n"
+                f"Unmute early with `{ctx.prefix}unmute {member.display_name}`.",
+                title="🔇 Muted",
+            ),
+            mention_author=False,
+        )
+
+    @commands.hybrid_command(name="unmute", usage="<member> [reason]")
+    @commands.guild_only()
+    @is_moderator("moderate_members")
+    @commands.bot_has_permissions(manage_roles=True)
+    async def unmute(
+        self,
+        ctx: commands.Context,
+        member: discord.Member,
+        *,
+        reason: str = "No reason provided",
+    ) -> None:
+        """Remove a mute, the Muted role and any timeout from a member."""
+        data = self.bot.db.guild(ctx.guild.id)
+        removed: list[str] = []
+
+        if data["mutes"].pop(str(member.id), None) is not None:
+            await self.bot.db.save()
+            removed.append("mute")
+
+        role_id = data.get("mute_role_id")
+        role = ctx.guild.get_role(role_id) if role_id else None
+        if role is not None and role in member.roles:
+            try:
+                await member.remove_roles(role, reason=self._reason(ctx, "unmute"))
+                removed.append("mute role")
+            except discord.Forbidden:
+                await ctx.reply(
+                    embed=error_embed(
+                        "Discord blocked me from removing the mute role — check "
+                        "my role position."
+                    ),
+                    mention_author=False,
+                )
+                return
+
+        if member.is_timed_out():
+            try:
+                await member.timeout(None, reason=self._reason(ctx, "unmute"))
+                removed.append("timeout")
+            except discord.HTTPException as exc:
+                log.warning("Could not clear timeout for %s: %s", member.id, exc)
+
+        if not removed:
+            await ctx.reply(
+                embed=info_embed(f"**{member}** is not muted."), mention_author=False
+            )
+            return
+
+        await self._notify(member, ctx.guild, "unmuted", reason)
+        await self._audit(
+            ctx,
+            "🔊 Member unmuted",
+            f"{member} (`{member.id}`)",
+            reason,
+            color=0x2ECC71,
+        )
+        await ctx.reply(
+            embed=success_embed(f"**{member}** can talk again.", title="🔊 Unmuted"),
+            mention_author=False,
+        )
+
+    @commands.hybrid_command(name="mutes", aliases=["mutelist", "muted"])
+    @commands.guild_only()
+    async def mutes(self, ctx: commands.Context) -> None:
+        """List everyone who is currently muted with the Muted role."""
+        data = self.bot.db.guild(ctx.guild.id)
+        records = data.get("mutes") or {}
+        if not records:
+            await ctx.reply(
+                embed=info_embed(
+                    f"Nobody is muted.\nUse `{ctx.prefix}mute @member 1h reason` to mute someone."
+                ),
+                mention_author=False,
+            )
+            return
+
+        lines: list[str] = []
+        for user_id, record in list(records.items())[:15]:
+            member = (
+                ctx.guild.get_member(int(user_id))
+                if str(user_id).isdigit()
+                else None
+            )
+            who = member.mention if member else f"`{user_id}` (left the server)"
+            until = _aware(record.get("until"))
+            when = discord.utils.format_dt(until, "R") if until else "no expiry"
+            lines.append(
+                f"• {who} — {when}\n"
+                f"  {truncate(record.get('reason') or 'No reason provided', 120)}"
+                f" *(by {record.get('moderator', 'unknown')})*"
+            )
+        if len(records) > 15:
+            lines.append(f"*…and {len(records) - 15} more*")
+
+        await ctx.reply(
+            embed=warning_embed(
+                f"**{len(records)}** muted member(s).\n\n" + "\n".join(lines),
+                title="🔇 Active mutes",
+            ),
+            mention_author=False,
+        )
+
+    @commands.hybrid_command(name="mutesetup", aliases=["muterole"], usage="[role]")
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    @commands.bot_has_permissions(manage_roles=True)
+    async def mutesetup(
+        self, ctx: commands.Context, role: discord.Role | None = None
+    ) -> None:
+        """Create (or repair) the Muted role and its channel permissions."""
+        if role is not None:
+            if role.is_default() or role.managed:
+                await ctx.reply(
+                    embed=error_embed("That role cannot be used for mutes."),
+                    mention_author=False,
+                )
+                return
+            self.bot.db.guild(ctx.guild.id)["mute_role_id"] = role.id
+            await self.bot.db.save()
+
+        muted_role, problem_text = await self._ensure_mute_role(ctx.guild, role)
+        if muted_role is None:
+            await ctx.reply(
+                embed=error_embed(problem_text or "No mute role available."),
+                mention_author=False,
+            )
+            return
+
+        updated = await self._apply_mute_overwrites(ctx.guild, muted_role)
+        await self._audit(
+            ctx,
+            "🔧 Mute role configured",
+            f"{muted_role.mention} — {updated} channel(s) updated",
+            color=0x2ECC71,
+        )
+        await ctx.reply(
+            embed=success_embed(
+                f"**{muted_role.mention}** is ready and blocked in {updated} "
+                f"channel(s).\n\nUse `{ctx.prefix}mute @member 1h reason` to mute "
+                f"someone and `{ctx.prefix}unmute @member` to undo it.\n"
+                "Mutes expire on their own, so nobody stays muted by accident.",
+                title="🔧 Mute role ready",
+            ),
+            mention_author=False,
+        )
+
+    @tasks.loop(seconds=45)
+    async def _expire_mutes(self) -> None:
+        """Lift mutes whose time is up, even after a restart."""
+        for guild in list(self.bot.guilds):
+            data = self.bot.db.guild(guild.id)
+            records = data.get("mutes") or {}
+            if not records:
+                continue
+            now = discord.utils.utcnow()
+            expired = [
+                user_id
+                for user_id, record in records.items()
+                if (until := _aware(record.get("until")))
+                and until <= now
+                and str(user_id).isdigit()
+            ]
+            if not expired:
+                continue
+
+            role_id = data.get("mute_role_id")
+            role = guild.get_role(role_id) if role_id else None
+            for user_id in expired:
+                records.pop(user_id, None)
+                member = guild.get_member(int(user_id))
+                if member is None or role is None or role not in member.roles:
+                    continue
+                try:
+                    await member.remove_roles(role, reason="Mute expired")
+                except discord.HTTPException as exc:
+                    log.warning("Could not lift expired mute for %s: %s", user_id, exc)
+            await self.bot.db.save()
+            await self.bot.audit(
+                guild,
+                title="🔊 Mute expired",
+                description=f"**{len(expired)}** member(s) can talk again.",
+                color=0x2ECC71,
+            )
+
+    @_expire_mutes.before_loop
+    async def _wait_for_ready(self) -> None:
+        await self.bot.wait_until_ready()
 
     # ------------------------------------------------------------- warnings
 

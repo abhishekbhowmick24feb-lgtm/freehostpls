@@ -12,3 +12,4 @@ data/transcripts/
 # uploaded media + zip archive
 data/media/
 discord-bot.zip
+data/backups/

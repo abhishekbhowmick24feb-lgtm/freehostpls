@@ -17,11 +17,12 @@ DB_PATH = DATA_DIR / "settings.json"
 TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 DEFAULT_PREFIX = (os.getenv("DEFAULT_PREFIX", "!").strip() or "!")
 # Mirror data/settings.json into the owner's DMs so host restarts keep settings.
-STATE_BACKUP = os.getenv("STATE_BACKUP", "1").strip().lower() not in {
-    "0",
-    "false",
-    "no",
-    "off",
+# Off by default: it DMs the owner. Set STATE_BACKUP=1 to turn it back on.
+STATE_BACKUP = os.getenv("STATE_BACKUP", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
 }
 
 # Load order for cogs. Used by the owner reload command as well.

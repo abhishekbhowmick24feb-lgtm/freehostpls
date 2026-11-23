@@ -120,6 +120,8 @@ DEFAULTS: dict[str, Any] = {
     "shop": DEFAULT_SHOP,
     "warnings": {},
     "warning_seq": 0,
+    "mute_role_id": None,
+    "mutes": {},
 }
 
 

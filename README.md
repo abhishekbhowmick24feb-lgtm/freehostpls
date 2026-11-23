@@ -11,7 +11,7 @@ category sections and priced items.
 
 | Area | What you get |
 | --- | --- |
-| Moderation | ban, unban, kick, timeout, warnings (stored), purge, slowmode, lock/unlock, add/remove role, nickname — usable via a configurable **moderator role** or Discord permissions |
+| Moderation | ban, unban, kick, timeout, role-based **mute** with automatic expiry, warnings (stored), purge, slowmode, lock/unlock, add/remove role, nickname — usable via a configurable **moderator role** or Discord permissions |
 | Channel access | Give any member access to any private text channel, or remove their explicit access |
 | Vouches | Buyer-role-gated seller vouches with 1–5 star ratings, seller profiles and a leaderboard |
 | Security | Raid mode, anti-nuke audit detection, a scam link/invite filter, and a configurable security alert channel |
@@ -27,7 +27,7 @@ category sections and priced items.
 | Tickets | Panel button opens a private channel, asks **what item** and **how many**, auto-fills the shop price, with staff **Claim** and **Close** buttons, plus a saved **transcript** posted to a staff channel on close |
 | Honeypot | A trap channel with a warning panel (bot avatar thumbnail) and a live **Kicks** counter. Anyone who types there is softbanned automatically; staff and moderators are exempt |
 | Whitelist | Roles and individual members who can talk in channels locked by the bot and are exempt from the honeypot |
-| Logs | Choose a channel that receives an audit trail of moderation, ticket, shop, verification and bot-message activity |
+| Logs | Choose a channel that receives an audit trail of moderation, ticket, shop, verification and bot-message activity — including **deleted and edited messages with their text** |
 | Bot status | A live panel in a channel you choose, showing 🟢 online / 🔴 offline, uptime and ping |
 | Marketplace | Heading + GIF banner + thumbnail + footer, up to 8 category sections, each with its own GIF, description and colour, and items with price, stock and description. Management is limited to a configurable **shop staff role** |
 | Owner | reload cogs, list servers, leave a server, sync commands, live stats, shutdown, eval |
@@ -111,16 +111,19 @@ still runs, but the container is rebuilt on every restart, so `data/` starts
 empty. That is why a free host forgets the log channel (no log entries arrive)
 and the temp-voice setup (no rooms are created) while every command still works.
 
-### Keeping settings on a free host
+### Keeping settings on a free host (optional, off by default)
 
-`settings.json` is mirrored into a DM with the bot's owner: one message holding
+The bot can mirror `settings.json` into a DM with its owner: one message holding
 the file, replaced a few seconds after every save. On startup, when `data/` is
 empty, the bot downloads that copy before any cog loads, so log channel,
 prefixes, temp-voice setup, tickets, vouches, warnings and giveaways survive
-restarts and redeploys. Nothing to configure — the message appears in the
-owner's DMs, and deleting it only means the next save starts a fresh copy.
+restarts and redeploys.
 
-Set `STATE_BACKUP=0` in the service's environment variables to turn it off.
+**It is disabled by default** because it shows up in the owner's DMs. To turn
+it on, add `STATE_BACKUP=1` to the service's environment variables (or `.env`)
+and restart. Set `STATE_BACKUP=0` (or delete the variable) to turn it off again;
+no DM is sent while it is off, and the one already in your DMs can simply be
+deleted.
 
 After deploying this, run these **once** so the copy is created:
 
@@ -272,9 +275,15 @@ The ping/uptime section reads `data/status.json`, which the bot rewrites every
 ```
 
 - `logs channel #channel` picks where the bot records what it does (Manage Server).
-- Recorded: bans, kicks, timeouts, warnings, purges, slowmode, lock/unlock, role and
-  nickname changes, tickets opened/claimed/closed, shop edits and panel posts,
-  verification panel changes, and messages sent with `say` / `embed`.
+- Recorded: bans, kicks, timeouts, **mutes/unmutes**, warnings, purges, slowmode,
+  lock/unlock, role and nickname changes, tickets opened/claimed/closed, shop edits
+  and panel posts, verification panel changes, and messages sent with `say` / `embed`.
+- **Deleted messages** are logged with the author, the channel and the full text
+  (plus attachment links), and bulk deletes/purges log a preview of what was removed.
+  **Edited messages** log the old and new text.
+- Discord only stores a message for the bot after it sees it, so a delete of a very
+  old message (from before the bot last started) logs the author and channel but not
+  the text.
 - `logs disable` turns logging off, `logs status` shows the current channel.
 
 ---
@@ -313,6 +322,10 @@ Members need either the permission listed here **or** the role set with `!modrol
 | `kick <member> [reason]` | Kick a member |
 | `timeout <member> <duration> [reason]` | Timeout, e.g. `10m`, `1h30m`, `2d` (max 28d) |
 | `untimeout <member> [reason]` | Remove a timeout |
+| `mute <member> [duration] [reason]` | Mute with the **Muted** role so they cannot send messages or talk. Default `1h`; omit the duration to use the argument as the reason. Expires on its own |
+| `unmute <member> [reason]` | Remove the mute, the Muted role and any timeout |
+| `mutes` | List everyone currently muted with their reason and remaining time |
+| `mutesetup [role]` | Create/repair the Muted role and block it in every channel (Manage Server) |
 | `warn <member> [reason]` | Add a stored warning and DM the member |
 | `warnings [member]` | Show warning history |
 | `delwarn <member> <id>` | Delete one warning |
